@@ -1,0 +1,79 @@
+#!/usr/bin/env zsh
+# ─── environment ──────────────────────────────────────────────────────────────
+
+# ─── History ──────────────────────────────────────────────────────────────────
+export HISTFILE="$XDG_STATE_HOME/zsh/history"
+export HISTSIZE=100000
+export SAVEHIST=100000
+
+# ─── Editor ───────────────────────────────────────────────────────────────────
+export EDITOR="nvim"
+export VISUAL="nvim"
+
+# ─── PATH ─────────────────────────────────────────────────────────────────────
+typeset -U path PATH
+export PATH="$XDG_BIN_HOME:$PATH"
+export PATH="$PATH:/usr/local/go/bin:$HOME/go/bin"
+export PATH="/opt/homebrew/bin:/opt/homebrew/opt/python@3.14/libexec/bin:$PATH"
+
+# ─── Volta ────────────────────────────────────────────────────────────────────
+export VOLTA_HOME="$HOME/.volta"
+export PATH="$VOLTA_HOME/bin:$PATH"
+
+# Project navigation default. Keep explicit overrides.
+export WORKSPACE="${WORKSPACE:-$HOME/Workspace}"
+
+# ─── NX ───────────────────────────────────────────────────────────────────────
+export NX_TUI=false
+
+# ─── FZF — Gruvbox Material theme (matches WezTerm palette) ──────────────────
+export FZF_DEFAULT_OPTS="
+  --height=50%
+  --layout=reverse
+  --border=rounded
+  --prompt='  '
+  --pointer='▸'
+  --marker='✓'
+  --color=bg+:#3c3836,bg:#282828,spinner:#7daea3,hl:#7daea3
+  --color=fg:#d4be98,header:#928374,info:#928374,pointer:#89b482
+  --color=marker:#a9b665,fg+:#ebdbb2,prompt:#7daea3,hl+:#89b482
+  --color=border:#504945,separator:#504945
+  --bind='ctrl-/:toggle-preview'
+  --bind='ctrl-u:preview-half-page-up'
+  --bind='ctrl-d:preview-half-page-down'
+  --preview-window=right:55%:border-left:wrap"
+
+# Use fd as the default find command (respects .gitignore, faster)
+export FZF_DEFAULT_COMMAND='fd --type f --hidden --follow --exclude .git'
+export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
+export FZF_ALT_C_COMMAND='fd --type d --hidden --follow --exclude .git'
+
+# Select the installed bat executable for preview subprocesses.
+if (( $+commands[bat] )); then
+    export FZF_BAT_COMMAND=bat
+elif (( $+commands[batcat] )); then
+    export FZF_BAT_COMMAND=batcat
+else
+    export FZF_BAT_COMMAND=cat
+fi
+export FZF_CTRL_T_OPTS="--preview 'if test -d {}; then eza --tree --level=2 --icons --color=always -- {}; else case \"\$FZF_BAT_COMMAND\" in cat) head -n 200 -- {};; *) \"\$FZF_BAT_COMMAND\" --color=always --style=numbers,changes --line-range=:200 -- {};; esac; fi'"
+export FZF_ALT_C_OPTS="--preview 'eza --tree --level=2 --icons --color=always {}'"
+export FZF_CTRL_R_OPTS="--preview 'echo {}' --preview-window=down:3:wrap"
+
+# ─── bat / batcat ─────────────────────────────────────────────────────────────
+export BAT_THEME="gruvbox-dark"
+
+# ─── eza ──────────────────────────────────────────────────────────────────────
+export EZA_COLORS="da=38;5;245:di=38;5;179:ln=38;5;109:ex=38;5;167"
+
+# ─── Less ─────────────────────────────────────────────────────────────────────
+export LESS='-R --use-color -Dd+r -Du+b'
+export LESSHISTFILE="$XDG_STATE_HOME/less/history"
+
+# ─── Google Cloud SDK ─────────────────────────────────────────────────────────
+[ -f "$HOME/.config/google-cloud-sdk/path.zsh.inc" ] && \
+    source "$HOME/.config/google-cloud-sdk/path.zsh.inc"
+
+# ─── For compilers to find libomp ─────────────────────────────────────────────────────────
+export LDFLAGS=-L/opt/homebrew/opt/libomp/lib
+export CPPFLAGS=-I/opt/homebrew/opt/libomp/include

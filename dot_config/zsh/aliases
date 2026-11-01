@@ -1,0 +1,61 @@
+#!/usr/bin/env zsh
+# ─── aliases ──────────────────────────────────────────────────────────────────
+
+# ─── Directory listing (eza) ──────────────────────────────────────────────────
+# Keep native eza completion through alias expansion.
+# Use automatic decorations so redirected output stays readable.
+# For system ls options, use `command ls` or `/bin/ls`.
+if (( $+commands[eza] )); then
+    alias ls='eza --color=auto --hyperlink=auto --group-directories-first'
+    alias ll='eza -la --icons=auto --git --color=auto --hyperlink=auto --group-directories-first'
+    alias la='eza -a --icons=auto --color=auto --hyperlink=auto --group-directories-first'
+    alias lt='eza --tree --level=2 --icons=auto --color=auto'
+    alias tree='eza --tree --icons=auto --color=auto'
+else
+    alias ll='ls -la'
+    alias la='ls -A'
+fi
+
+# ─── File operations (safe defaults) ─────────────────────────────────────────
+alias cp='cp -i'
+alias mv='mv -i'
+alias rm='rm -I'
+alias mkdir='mkdir -p'
+
+# ─── Pager / viewer ──────────────────────────────────────────────────────────
+if command -v batcat &>/dev/null; then
+    alias cat='batcat --paging=never'
+    alias bat='batcat'
+elif command -v bat &>/dev/null; then
+    alias cat='bat --paging=never'
+fi
+
+# ─── View image in terminal ──────────────────────────────────────────────────────────
+alias wezimg='wezterm imgcat'
+
+# ─── Grep with color ─────────────────────────────────────────────────────────
+alias grep='grep --color=auto'
+
+# ─── ripgrep ─────────────────────────────────────────────────────────────────
+alias rg='rg --hyperlink-format=kitty --color=auto --smart-case'
+
+# ─── delta ───────────────────────────────────────────────────────────────────
+alias delta="delta --hyperlinks --hyperlinks-file-link-format='file://{path}#{line}'"
+
+# ─── Quick navigation ─────────────────────────────────────────────────────────
+alias workspace='cd -- "$WORKSPACE"'
+alias cfg='cd -- "$XDG_CONFIG_HOME"'
+alias fac='cd -- "$WORKSPACE/fac"'
+alias zsh-config='cd -- "$ZDOTDIR"'
+alias downloads='cd -- "$HOME/Downloads"'
+alias apolitical='cd -- "$WORKSPACE/apolitical"'
+
+# ─── Clipboard (Linux) ───────────────────────────────────────────────────────
+if command -v xclip &>/dev/null; then
+    alias pbcopy='xclip -selection clipboard'
+    alias pbpaste='xclip -selection clipboard -o'
+fi
+
+# ─── Neovim ──────────────────────────────────────────────────────────────────
+alias v='nvim'
+alias vi='nvim'

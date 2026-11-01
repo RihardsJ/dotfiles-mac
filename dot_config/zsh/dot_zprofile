@@ -1,0 +1,25 @@
+# ─── .zprofile ───────────────────────────────────────────────────────────────
+# Runs once per login shell. Side effects (mkdir, sourcing install scripts)
+# belong here — not in .zshenv which runs for every shell invocation.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Added by OrbStack: command-line tools and integration
+# This won't be added again if you remove it.
+source ~/.orbstack/shell/init.zsh 2>/dev/null || :
+
+# Ensure XDG directories exist
+for dir in "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_STATE_HOME" \
+           "$XDG_CACHE_HOME" "$XDG_BIN_HOME"; do
+  [[ -d $dir ]] || mkdir -p "$dir"
+done
+
+# Ensure tool-specific state subdirs exist
+mkdir -p "$XDG_STATE_HOME/zsh"    # HISTFILE lives here
+mkdir -p "$XDG_STATE_HOME/less"   # LESSHISTFILE lives here
+mkdir -p "$XDG_CACHE_HOME/zsh"    # zcompcache lives here
+
+# Rust / Cargo
+[[ -f "$HOME/.cargo/env" ]] && source "$HOME/.cargo/env"
+
+# Dotfiles install config (optional)
+[[ -f "$DOTFILES/install_config" ]] && source "$DOTFILES/install_config"

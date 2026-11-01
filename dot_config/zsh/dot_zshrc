@@ -1,0 +1,308 @@
+#!/usr/bin/env zsh
+
+###############################
+# ZSH CONFIGURATION           #
+###############################
+
+# Load environment variables first — other files may depend on exported vars
+[ -f "$ZDOTDIR/environment" ] && source "$ZDOTDIR/environment"
+
+# Load aliases
+[ -f "$ZDOTDIR/aliases" ] && source "$ZDOTDIR/aliases"
+
+# Load all function files
+for _f in "$ZDOTDIR"/functions/*.zsh(N); do
+    [ -f "$_f" ] && source "$_f"
+done
+unset _f
+
+###############################
+# ZSH OPTIONS                 #
+###############################
+
+# History
+setopt EXTENDED_HISTORY         # Save timestamp and duration in history
+setopt HIST_EXPIRE_DUPS_FIRST   # Expire duplicate entries first when trimming
+setopt HIST_VERIFY              # Show history expansion before running
+setopt HIST_IGNORE_ALL_DUPS     # Delete old duplicate when new is added
+setopt HIST_IGNORE_SPACE        # Don't record commands starting with space
+setopt HIST_FIND_NO_DUPS        # Don't show duplicates in search
+setopt HIST_SAVE_NO_DUPS        # Don't write duplicates to history file
+setopt SHARE_HISTORY            # Share history across sessions
+setopt APPEND_HISTORY           # Append (don't overwrite) history file
+unsetopt INC_APPEND_HISTORY     # SHARE_HISTORY already writes each command
+
+# Directory navigation
+setopt AUTO_CD                  # Type a path to cd into it
+setopt AUTO_PUSHD               # Push previous dir onto stack on cd
+setopt PUSHD_IGNORE_DUPS        # No duplicate dirs in stack
+setopt PUSHD_SILENT             # Don't print stack after pushd/popd
+
+# Globbing
+setopt EXTENDED_GLOB            # Extended glob patterns (#, ^, ~)
+setopt NO_CASE_GLOB             # Case-insensitive globbing
+setopt NUMERIC_GLOB_SORT        # Sort numerically where appropriate
+
+# Other
+setopt INTERACTIVE_COMMENTS     # Allow # comments in interactive shell
+setopt MULTIOS                  # Write to multiple descriptors
+setopt PROMPT_SUBST             # Enable $(...) in prompt strings
+setopt MENU_COMPLETE            # Auto-select first completion match
+
+setopt NO_BEEP                  # No beep on errors
+
+unsetopt FLOWCONTROL            # Disable Ctrl+S / Ctrl+Q freeze
+unsetopt CORRECT                # No command autocorrect
+unsetopt CORRECT_ALL            # No argument autocorrect
+
+###############################
+# COMPLETION SYSTEM           #
+###############################
+
+# Homebrew supplies _eza and other completions. Add them before compinit.
+# Derive the prefix without starting brew for each interactive shell.
+if (( $+commands[brew] )); then
+    _brew_completions="${HOMEBREW_PREFIX:-${commands[brew]:h:h}}/share/zsh/site-functions"
+    if [[ -d $_brew_completions ]]; then
+        fpath=("$_brew_completions" ${fpath:#$_brew_completions})
+    fi
+    unset _brew_completions
+fi
+
+# Reuse the dump while checking for new completion files and insecure directories.
+autoload -Uz compinit
+compinit -d "$ZDOTDIR/.zcompdump"
+_comp_options+=(globdots)        # Complete hidden files too
+
+setopt AUTO_LIST                 # List choices on ambiguous completion
+setopt COMPLETE_IN_WORD          # Complete from both ends of a word
+setopt ALWAYS_TO_END             # Move cursor to end after completion
+setopt LIST_PACKED               # Compact completion list
+
+zstyle ':completion:*' use-cache on
+zstyle ':completion:*' cache-path "$XDG_CACHE_HOME/zsh/.zcompcache"
+zstyle ':completion:*' menu select
+# fzf-tab owns selection when installed.
+[[ -f "$XDG_DATA_HOME/Aloxaf/fzf-tab/fzf-tab.plugin.zsh" ]] && zstyle ':completion:*' menu no
+zstyle ':completion:*' group-name ''
+zstyle ':completion:*:*:*:*:descriptions' format '%F{#a9b665}-- %d --%f'
+zstyle ':completion:*:*:*:*:corrections' format '%F{#d8a657}!- %d (errors: %e) -!%f'
+zstyle ':completion:*:messages'  format ' %F{#d3869b} -- %d --%f'
+zstyle ':completion:*:warnings'  format ' %F{#ea6962}-- no matches found --%f'
+zstyle ':completion:*:default'   list-colors ${(s.:.)LS_COLORS}
+zstyle ':completion:*'           complete-options true
+zstyle ':completion:*'           file-sort modification
+zstyle ':completion:*'           matcher-list '' 'm:{a-zA-Z}={A-Za-z}' 'r:|[._-]=* r:|=*' 'l:|=* r:|=*'
+
+# fzf-tab previews — consistent with FZF_*_OPTS in environment
+zstyle ':fzf-tab:complete:cd:*'                      fzf-preview 'eza --tree --level=2 --icons --color=always $realpath'
+zstyle ':fzf-tab:complete:__zoxide_z:*'              fzf-preview 'eza --tree --level=2 --icons --color=always $realpath'
+zstyle ':fzf-tab:complete:git-(add|diff|restore):*'  fzf-preview 'git diff --color=always HEAD -- $word 2>/dev/null'
+zstyle ':fzf-tab:complete:git-checkout:*'            fzf-preview 'git log --oneline --color=always $word 2>/dev/null'
+zstyle ':fzf-tab:complete:nvim:*'                    fzf-preview '"$FZF_BAT_COMMAND" --color=always --style=numbers -- $realpath 2>/dev/null || eza --tree --icons $realpath 2>/dev/null'
+zstyle ':fzf-tab:*'                                  fzf-flags \
+    '--color=bg+:#3c3836,bg:#282828,hl:#ea6962,fg:#d4be98,fg+:#ebdbb2' \
+    '--color=info:#d3869b,prompt:#a9b665,pointer:#d8a657,marker:#a9b665,border:#504945'
+
+###############################
+# PLUGINS                     #
+###############################
+
+# Load order is intentional:
+#   compinit (above) → fzf-tab → autosuggestions → syntax-highlighting →
+#   history-substring-search → autopair → auto-notify → zsh-vi-mode
+#
+# zsh-vi-mode must be last: it resets keymaps. Everything that needs to
+# survive that reset is re-applied inside zvm_after_init() below.
+
+_znap="${XDG_DATA_HOME:-$HOME/.local/share}"
+
+[ -f "$_znap/Aloxaf/fzf-tab/fzf-tab.plugin.zsh" ] && {
+    source "$_znap/Aloxaf/fzf-tab/fzf-tab.plugin.zsh"
+    # Navigate between completion groups (e.g. subcommands vs flags)
+    zstyle ':fzf-tab:*' switch-group ',' '.'
+}
+
+[ -f "$_znap/zsh-users/zsh-autosuggestions/zsh-autosuggestions.zsh" ] && {
+    source "$_znap/zsh-users/zsh-autosuggestions/zsh-autosuggestions.zsh"
+    ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE='fg=#585858'
+    ZSH_AUTOSUGGEST_STRATEGY=(history completion)
+}
+
+[ -f "$_znap/zsh-users/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" ] && {
+    source "$_znap/zsh-users/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"
+    # Gruvbox Material syntax highlight colors
+    ZSH_HIGHLIGHT_STYLES[default]='fg=#d4be98'
+    ZSH_HIGHLIGHT_STYLES[unknown-token]='fg=#ea6962,bold'
+    ZSH_HIGHLIGHT_STYLES[reserved-word]='fg=#e78a4e'
+    ZSH_HIGHLIGHT_STYLES[alias]='fg=#a9b665'
+    ZSH_HIGHLIGHT_STYLES[builtin]='fg=#a9b665'
+    ZSH_HIGHLIGHT_STYLES[function]='fg=#a9b665'
+    ZSH_HIGHLIGHT_STYLES[command]='fg=#a9b665'
+    ZSH_HIGHLIGHT_STYLES[precommand]='fg=#a9b665,italic'
+    ZSH_HIGHLIGHT_STYLES[commandseparator]='fg=#e78a4e'
+    ZSH_HIGHLIGHT_STYLES[path]='fg=#d8a657,underline'
+    ZSH_HIGHLIGHT_STYLES[path_pathseparator]='fg=#928374,underline'
+    ZSH_HIGHLIGHT_STYLES[globbing]='fg=#89b482'
+    ZSH_HIGHLIGHT_STYLES[single-quoted-argument]='fg=#d8a657'
+    ZSH_HIGHLIGHT_STYLES[double-quoted-argument]='fg=#d8a657'
+    ZSH_HIGHLIGHT_STYLES[dollar-quoted-argument]='fg=#d8a657'
+    ZSH_HIGHLIGHT_STYLES[dollar-double-quoted-argument]='fg=#d3869b'
+    ZSH_HIGHLIGHT_STYLES[back-double-quoted-argument]='fg=#d3869b'
+    ZSH_HIGHLIGHT_STYLES[redirection]='fg=#7daea3'
+    ZSH_HIGHLIGHT_STYLES[comment]='fg=#665c54,italic'
+    ZSH_HIGHLIGHT_STYLES[named-fd]='fg=#7daea3'
+    ZSH_HIGHLIGHT_STYLES[arg0]='fg=#a9b665'
+}
+
+[ -f "$_znap/zsh-users/zsh-history-substring-search/zsh-history-substring-search.zsh" ] && {
+    source "$_znap/zsh-users/zsh-history-substring-search/zsh-history-substring-search.zsh"
+    HISTORY_SUBSTRING_SEARCH_HIGHLIGHT_FOUND='bg=#3c3836,fg=#a9b665,bold'
+    HISTORY_SUBSTRING_SEARCH_HIGHLIGHT_NOT_FOUND='bg=#3c3836,fg=#ea6962,bold'
+    HISTORY_SUBSTRING_SEARCH_FUZZY=1
+}
+
+[ -f "$_znap/hlissner/zsh-autopair/autopair.plugin.zsh" ] && \
+    source "$_znap/hlissner/zsh-autopair/autopair.plugin.zsh"
+
+[ -f "$_znap/MichaelAquilina/zsh-auto-notify/auto-notify.plugin.zsh" ] && {
+    source "$_znap/MichaelAquilina/zsh-auto-notify/auto-notify.plugin.zsh"
+    export AUTO_NOTIFY_THRESHOLD=30
+}
+
+# zsh-vi-mode — must be last
+[ -f "$_znap/jeffreytse/zsh-vi-mode/zsh-vi-mode.plugin.zsh" ] && \
+    source "$_znap/jeffreytse/zsh-vi-mode/zsh-vi-mode.plugin.zsh"
+
+unset _znap
+
+###############################
+# EXTERNAL TOOLS              #
+###############################
+
+# Zoxide — smart cd with frecency ranking
+command -v zoxide >/dev/null && eval "$(zoxide init zsh)"
+
+# Atuin — enhanced history search
+# --disable-up-arrow: Up/Down are used by history-substring-search
+command -v atuin >/dev/null && eval "$(atuin init zsh --disable-up-arrow)"
+
+# uv — Python package manager shell completions
+command -v uv >/dev/null && eval "$(uv generate-shell-completion zsh)"
+
+# ngrok — tunnel completions
+command -v ngrok >/dev/null && eval "$(ngrok completion)"
+
+# Azure CLI — Bash completions through Zsh compatibility
+if (( $+commands[brew] )); then
+    _az_completion="${HOMEBREW_PREFIX:-${commands[brew]:h:h}}/etc/bash_completion.d/az"
+    if [ -f "$_az_completion" ]; then
+        autoload bashcompinit && bashcompinit
+        source "$_az_completion"
+    fi
+    unset _az_completion
+fi
+
+# Google Cloud SDK — completions (path already sourced in environment)
+[ -f "$HOME/.config/google-cloud-sdk/completion.zsh.inc" ] && \
+    source "$HOME/.config/google-cloud-sdk/completion.zsh.inc"
+
+# Use the integration supplied by the installed fzf executable.
+if (( $+commands[fzf] )); then
+    source <(fzf --zsh)
+fi
+
+###############################
+# KEY BINDINGS                #
+###############################
+
+# zvm_after_init is called by zsh-vi-mode once its keymap setup is done.
+# Everything placed here survives the vi-mode keymap reset.
+zvm_after_init() {
+    # Restore existing widgets without sourcing fzf again.
+    local map
+    for map in viins vicmd emacs; do
+        (( $+widgets[fzf-file-widget] )) && bindkey -M "$map" '^T' fzf-file-widget
+        (( $+widgets[fzf-cd-widget] )) && bindkey -M "$map" '\ec' fzf-cd-widget
+    done
+
+    # History substring search — Up/Down arrows (insert + vicmd mode)
+    if (( $+widgets[history-substring-search-up] )); then
+        bindkey '^[[A' history-substring-search-up
+        bindkey '^[[B' history-substring-search-down
+    fi
+
+    # Ctrl+F — zoxide interactive jump (zi)
+    _widget_zoxide() {
+        local dir
+        dir=$(command zoxide query -i) || { zle redisplay; return 0 }
+        [[ -n $dir ]] && builtin cd -- "$dir"
+        zle reset-prompt
+    }
+    zle -N _widget_zoxide
+    command -v zoxide >/dev/null && bindkey '^F' _widget_zoxide
+
+    # Ctrl+E — edit current command line in $EDITOR
+    autoload -Uz edit-command-line
+    zle -N edit-command-line
+    bindkey         '^E' edit-command-line
+    bindkey -M vicmd '^E' edit-command-line
+
+    # Atuin Ctrl+R — restore after vi-mode keymap reset
+    if (( $+widgets[_atuin_search_widget] )); then
+        bindkey         '^R' _atuin_search_widget
+        bindkey -M vicmd '^R' _atuin_search_widget
+    elif (( $+widgets[fzf-history-widget] )); then
+        bindkey '^R' fzf-history-widget
+        bindkey -M vicmd '^R' fzf-history-widget
+    fi
+
+    # Ctrl+G — interactive git stage (gadd)
+    _widget_gadd() { gadd; zle reset-prompt }
+    zle -N _widget_gadd
+    bindkey '^G' _widget_gadd
+}
+
+# Vi mode installs these keys lazily on the first Escape.
+zvm_after_lazy_keybindings() {
+    zvm_after_init
+    (( $+widgets[history-substring-search-up] )) || return 0
+    bindkey -M vicmd 'k' history-substring-search-up
+    bindkey -M vicmd 'j' history-substring-search-down
+}
+
+# Keep useful bindings when the optional vi-mode plugin is absent.
+if (( ! $+functions[zvm_init] )); then
+    zvm_after_init
+fi
+
+###############################
+# PROMPT                      #
+###############################
+
+# Sourced last — registers precmd / preexec hooks
+[ -f "$ZDOTDIR/prompt" ] && source "$ZDOTDIR/prompt"
+
+# pnpm
+export PNPM_HOME="$XDG_DATA_HOME/pnpm"
+case ":$PATH:" in
+  *":$PNPM_HOME:"*) ;;
+  *) export PATH="$PNPM_HOME:$PATH" ;;
+esac
+# pnpm end
+
+# >>> conda initialize >>>
+# !! Contents within this block are managed by 'conda init' !!
+__conda_setup="$('/Users/rihards/miniconda3/bin/conda' 'shell.zsh' 'hook' 2> /dev/null)"
+if [ $? -eq 0 ]; then
+    eval "$__conda_setup"
+else
+    if [ -f "/Users/rihards/miniconda3/etc/profile.d/conda.sh" ]; then
+        . "/Users/rihards/miniconda3/etc/profile.d/conda.sh"
+    else
+        export PATH="/Users/rihards/miniconda3/bin:$PATH"
+    fi
+fi
+unset __conda_setup
+# <<< conda initialize <<<
+

@@ -1,0 +1,150 @@
+#!/usr/bin/env zsh
+# ─── prompt ───────────────────────────────────────────────────────────────────
+# Gruvbox Material · JetBrainsMono Nerd Font v3 · vi-mode aware
+#
+# Colour philosophy — cold / neutral:
+#   blue  (#7daea3) → directory, paths, vi-normal mode
+#   aqua  (#89b482) → git branch, vi-visual mode, prompt char
+#   green (#a9b665) → clean / success / staged
+#   red   (#ea6962) → errors, deletions (semantic only)
+#   gray  (#928374) → separators, stash, unmerged (recede into background)
+#   dim   (#665c54) → parent path, "on" text
+# ─────────────────────────────────────────────────────────────────────────────
+
+autoload -Uz add-zsh-hook vcs_info
+
+# ─── vcs_info (branch name only — status computed via git directly) ───────────
+zstyle ':vcs_info:*'      enable git
+zstyle ':vcs_info:git:*'  formats       '%b'
+zstyle ':vcs_info:git:*'  actionformats '%b|%a'
+
+# ─── Nerd Font glyphs (JetBrainsMono Nerd Font v3) ───────────────────────────
+_ic_branch=$'\ue725'    #  nf-dev-git_branch
+_ic_home=$'\uf015'      #  nf-fa-home
+_ic_folder=$'\uf07b'    #  nf-fa-folder_open
+_ic_plus=$'\uf067'      #  nf-fa-plus        (staged)
+_ic_pencil=$'\uf040'    #  nf-fa-pencil      (modified)
+_ic_cross=$'\uf00d'     #  nf-fa-times       (deleted)
+_ic_arrow=$'\uf061'     #  nf-fa-arrow_right (renamed)
+_ic_warn=$'\uf06a'      #  nf-fa-exclamation (unmerged)
+_ic_quest=$'\uf128'     #  nf-fa-question    (untracked)
+_ic_inbox=$'\uf01c'     #  nf-fa-inbox       (stash)
+_ic_up=$'\uf062'        #  nf-fa-arrow_up    (ahead)
+_ic_down=$'\uf063'      #  nf-fa-arrow_down  (behind)
+_ic_check=$'\uf00c'     #  nf-fa-check       (clean)
+
+# ─── Palette — cold / neutral subset of Gruvbox Material ─────────────────────
+_c_red='#ea6962'
+_c_green='#a9b665'
+_c_aqua='#89b482'
+_c_blue='#7daea3'
+_c_gray='#928374'
+_c_dim='#7c6f64'
+_c_fg='#d4be98'
+
+# ─── Prompt state ─────────────────────────────────────────────────────────────
+typeset -g _P_DIR=''
+typeset -g _P_GIT=''
+typeset -g _P_VIMODE=''
+typeset -g _P_EXECTIME=''
+typeset -g _cmd_start=-1
+
+# ─── Vi mode indicator ────────────────────────────────────────────────────────
+zvm_after_select_vi_mode() {
+    case $ZVM_MODE in
+        $ZVM_MODE_NORMAL)      _P_VIMODE="%F{$_c_blue}N%f " ;;
+        $ZVM_MODE_VISUAL)      _P_VIMODE="%F{$_c_aqua}V%f " ;;
+        $ZVM_MODE_VISUAL_LINE) _P_VIMODE="%F{$_c_aqua}VL%f " ;;
+        $ZVM_MODE_REPLACE)     _P_VIMODE="%F{$_c_red}R%f " ;;
+        *)                     _P_VIMODE='' ;;
+    esac
+    zle reset-prompt 2>/dev/null
+}
+
+# ─── Execution time ───────────────────────────────────────────────────────────
+_prompt_preexec() { _cmd_start=$SECONDS }
+
+_fmt_duration() {
+    local s=$1
+    (( s >= 3600 )) && { printf '%dh%dm%ds' $((s/3600)) $((s%3600/60)) $((s%60)); return }
+    (( s >= 60   )) && { printf '%dm%ds' $((s/60)) $((s%60)); return }
+    printf '%ds' $s
+}
+
+# ─── precmd ───────────────────────────────────────────────────────────────────
+_prompt_precmd() {
+    local _exit=$?
+
+    # ── Execution time ────────────────────────────────────────────────────────
+    if (( _cmd_start >= 0 )); then
+        local _elapsed=$(( SECONDS - _cmd_start ))
+        (( _elapsed >= 2 )) \
+            && _P_EXECTIME="%F{$_c_dim} $(_fmt_duration $_elapsed)%f" \
+            || _P_EXECTIME=''
+    else
+        _P_EXECTIME=''
+    fi
+    _cmd_start=-1
+
+    # ── Directory ─────────────────────────────────────────────────────────────
+    if [[ $PWD == $HOME ]]; then
+        _P_DIR="%F{$_c_blue}${_ic_home} ~%f"
+    else
+        local _short="${PWD/#$HOME/\~}"
+        _short=${_short//\%/%%}
+        local _parent="${_short%/*}/"
+        local _base="${_short##*/}"
+        _P_DIR="%F{$_c_dim}${_ic_folder} ${_parent}%f%B%F{$_c_blue}${_base}%f%b"
+    fi
+
+    # ── Git ───────────────────────────────────────────────────────────────────
+    vcs_info
+    if [[ -z $vcs_info_msg_0_ ]]; then
+        _P_GIT=''
+        return
+    fi
+
+    local _branch=${vcs_info_msg_0_//\%/%%}
+    local _st=''
+    local _idx
+    _idx=$(command git status --porcelain=v1 -b 2>/dev/null) || { _P_GIT=''; return }
+    local _idxn=$'\n'${_idx}
+    local _header=${_idx%%$'\n'*}
+
+    # Divergence
+    if [[ $_header == *'[ahead '*', behind '*']' ]]; then
+        _st+="%F{$_c_gray}⇅%f "
+    elif [[ $_header == *'[ahead '* ]]; then
+        _st+="%F{$_c_aqua}${_ic_up}%f "
+    elif [[ $_header == *'[behind '* ]]; then
+        _st+="%F{$_c_red}${_ic_down}%f "
+    fi
+
+    # Index / worktree  (trailing space keeps icons from crowding each other)
+    [[ $_idxn =~ $'\n''[MADRC]. '    ]] && _st+="%F{$_c_green}${_ic_plus}%f "   # staged
+    [[ $_idxn =~ $'\n''.[MD] '       ]] && _st+="%F{$_c_blue}${_ic_pencil}%f "  # modified
+    [[ $_idxn =~ $'\n''.[D] '        ]] && _st+="%F{$_c_red}${_ic_cross}%f "    # deleted
+    [[ $_idxn =~ $'\n''R. '          ]] && _st+="%F{$_c_gray}${_ic_arrow}%f "   # renamed
+    [[ $_idxn =~ $'\n''(DD|AU|UD|UA|DU|AA|UU) '  ]] && _st+="%F{$_c_gray}${_ic_warn}%f "   # unmerged
+    [[ $_idxn =~ $'\n''[?][?] '      ]] && _st+="%F{$_c_dim}${_ic_quest}%f "   # untracked
+
+    # Stash
+    command git rev-parse --verify --quiet refs/stash &>/dev/null \
+        && _st+="%F{$_c_gray}${_ic_inbox}%f"
+
+    # Clean
+    [[ -z $_st ]] && _st="%F{$_c_green}${_ic_check}%f"
+
+    _P_GIT=" %F{$_c_dim}on%f %F{$_c_aqua}${_ic_branch} ${_branch}%f ${_st}"
+}
+
+add-zsh-hook preexec _prompt_preexec
+add-zsh-hook precmd  _prompt_precmd
+
+# ─── Prompt assembly ──────────────────────────────────────────────────────────
+setopt PROMPT_SUBST
+
+PROMPT=$'\n''${_P_DIR}${_P_GIT}
+ ${_P_VIMODE}%(!.%F{'"$_c_red"'}#%f.%(?.%F{'"$_c_aqua"'}▸%f.%F{'"$_c_red"'}▸%f)) '
+
+RPROMPT='${_P_EXECTIME}'
