@@ -110,4 +110,23 @@ with tempfile.TemporaryDirectory(prefix='terminal-regression-') as tmp:
     check('3s' in result.stdout, 'timer includes commands started during second zero')
     syntax = subprocess.run(['/bin/zsh', '-n', str(ROOT / '.zshrc')], capture_output=True)
     check(syntax.returncode == 0, 'interactive configuration syntax')
+    result = shell('source "$1/functions/conda.zsh"; (( ! $+functions[__conda_activate] ))', work)
+    check(result.returncode == 0, 'Conda initialisation is deferred')
+    result = shell('source "$1/functions/conda.zsh"; conda activate base && '
+                   '[[ $CONDA_PREFIX == "$HOME/miniconda3" ]] && '
+                   'conda deactivate && [[ -z $CONDA_PREFIX ]]', work)
+    check(result.returncode == 0, 'first-use Conda activation and deactivation')
+    result = shell('source "$1/functions/conda.zsh"; conda --version >/dev/null || exit; '
+                   'original=$functions[conda]; source "$1/functions/conda.zsh"; '
+                   '[[ $functions[conda] == "$original" ]]', work)
+    check(result.returncode == 0, 're-sourcing preserves initialised Conda')
+    fake_home = work / 'missing-conda'
+    fake_home.mkdir()
+    result = shell('source "$1/functions/conda.zsh"; conda --version', work, HOME=str(fake_home))
+    check(result.returncode == 127 and 'not found' in result.stderr, 'missing Conda installation reports a useful failure')
+    profile = fake_home / 'miniconda3/etc/profile.d/conda.sh'
+    profile.parent.mkdir(parents=True)
+    profile.write_text('return 78\n')
+    result = shell('source "$1/functions/conda.zsh"; conda --version', work, HOME=str(fake_home))
+    check(result.returncode == 78, 'Conda initialisation failure retains its exit status')
 print(f'{checks} checks passed')
